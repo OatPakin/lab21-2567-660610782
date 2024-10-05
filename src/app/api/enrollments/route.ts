@@ -1,8 +1,7 @@
 import { checkToken } from "@lib/checkToken";
-import { Database, Payload } from "@lib/types";
+import { Payload } from "@lib/types";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@lib/getPrisma";
-
 
 export const GET = async () => {
   const payload = checkToken();
@@ -81,50 +80,46 @@ export const POST = async (request: NextRequest) => {
     );
   }
 
-  // Coding in lecture
   const prisma = getPrisma();
 
-const foundcourseNo = await prisma.course.findFirst({ 
-    where: { courseNo : courseNo}
-});
-if(!foundcourseNo) {
-  return NextResponse.json(
-    {
-      ok: false,
-      message: "Course number does not exist",
-    },
-    { status: 404 }
-  );
-}
-const foundcourse = await prisma.enrollment.findFirst({ 
-  where: { studentId: studentId, courseNo: courseNo }
-});
-if(foundcourse) {
-  return NextResponse.json(
-    {
-      ok: false,
-      message: "You already registered this course",
-    },
-    { status: 409 }
-  );
-}
+  // Check if course exists
+  const foundcourseNo = await prisma.course.findFirst({ //or findUnique
+    where: { courseNo: courseNo },
+  });
 
-  await prisma.enrollment.create({
-    data: {
-      studentId: studentId,
+  if(!foundcourseNo){
+    return NextResponse.json(
+        {
+          ok: false,
+          message: "Course number does not exist",
+        },
+        { status: 404 }
+      );
+    }
+
+  //check if course already enrolled
+  const enrolled = await prisma.enrollment.findFirst({
+    where: {
       courseNo: courseNo,
+      studentId: studentId,
     },
   });
 
-  const updatedEnrollments = await prisma.enrollment.findMany({
-    where: { studentId: studentId },
-    include: { course: true },
-  });
+  if (enrolled) {
+    return NextResponse.json(
+      { ok: false, message: "You already registered this course" },
+      { status: 400 }
+    );
+  }
 
+  //add course to database (enrollments collection)
+    await prisma.enrollment.create({
+      data: {courseNo: courseNo,studentId: studentId, },
+    })
+  
   return NextResponse.json({
     ok: true,
     message: "You has enrolled a course successfully",
-    enrollments: updatedEnrollments,
   });
 };
 
@@ -167,9 +162,12 @@ export const DELETE = async (request: NextRequest) => {
 
   const prisma = getPrisma();
   // Perform data delete
-  await prisma.enrollment.deleteMany({
-    where: { studentId: studentId, courseNo: courseNo },
+  await prisma.enrollment.delete({
+    where: {
+    courseNo_studentId: { courseNo: courseNo,studentId: studentId, },
+    },
   });
+  
   return NextResponse.json({
     ok: true,
     message: "You has dropped from this course. See you next semester.",
